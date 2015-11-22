@@ -5,11 +5,21 @@ try:
 except ImportError:
 	sys.exit('Please install Python xlsxwriter module!!\n') #exception at importing xlsxwriter
 from Functions import * #Import all sub routines from File Functions
-from re import search,match,I # import search,match and Ignore Case from Regular Expression(Module name :re)	
+from re import search,match,I,findall # import search,match and Ignore Case from Regular Expression(Module name :re)	
 File_pcap=False
 if len(sys.argv) ==3:
 	LOG_FILE_NAME=sys.argv[1]		#provide log file using command line argument
-	SYS_BW=int(sys.argv[2])
+	SYS_BW=sys.argv[2]
+	if SYS_BW.isdigit():
+		SYS_BW=int(SYS_BW)
+	elif SYS_BW.isalpha():
+		sys.exit('System Bandwidth Should have some numeric value!!')
+	elif SYS_BW.isalnum():
+		SYS_BW=findall('\d+|[a-zA-Z]+',SYS_BW)[0]
+		if SYS_BW.isalpha():
+			sys.exit('Please give numeric value first in System Bandwidth')
+		elif SYS_BW.isdigit():
+			SYS_BW=int(SYS_BW)
 	if int(SYS_BW) not in [1.4,3,5,10,20]:
 		sys.exit('Invalid System Bandwidth!! LTE Supoorts [1.4,3,5,6,15,20] MHz Only.')
 	if search("\.pcap",LOG_FILE_NAME,I):

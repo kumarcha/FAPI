@@ -1,0 +1,24 @@
+1. System information display once in a sheet as comments.
+2. Process the content of RRc connection request and Re-establishment
+3. Provide entry to user to enter Bandwidth in CLI(If entered BW not matches with MIB DL BW throw an error and close the program)
+4. FOR HARQ Feedback Check DL Config msg 4 sfs above and TB1 ACK/NACK is enough, for TB2 make it as blanck.
+5. In UL HI DCI0 Request remove all info except ACK/NACK indication in PHICH info field.
+6. In Excel Header  Rb start and no of RBs should be adjacent.
+7. CQI Flag Field should be added in excel which indicates Aperiodic CQI enabled or not(For DCI0/RAR).
+8. Peamble, Timing Advance, RAR Content fields should appear adjacent to each other in sheet and these should place before PUSCH info.
+9. For RAR content UL grant 20bits (CQI,TPC,RB assignment...etc) this information should process in excel.
+10. RB coding should be processed based on p-value which derived based on bandwidth. RAT-0 and RAT-2 having different type of derving RBS. Output should be in RBs.
+11. FOR CQI we have to mention power level which is in range -64db to 63.5db with 0.5 step size, please mention this power level value also.
+
+1 Ok
+2 Ok
+3 Ok
+4 Ok
+5 OK
+6. NA
+7. Ok
+8 Ok
+9. Ok
+10. Ok
+11. Ok
+

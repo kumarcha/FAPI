@@ -117,6 +117,15 @@ def DL_CONFIG_REQ(FH,Frame,worksheet,row,format1,SYS_BW):
 		row=row+1 # Increament Row for next Line in Excel
 	del(Message,Temp_Message,N_DCI,Frame,flag,count) #Delete all Temporary Message after Writing data on Excel
 	return row #return the Row number to Driver file 
+###########################################################################
+#	Function Name	:	get_NoofRbs
+#	Author		:	Chandan Kumar(chandan.kumar@votarytech.com)
+#	Input			:	Bits -> number of ON(1) bits in RB Coding
+#					DCi_Format -> DCI_FORMAT which is used in RB calculation
+#	Return Value	:	No of RBs
+#	Description		: 	Depending Upon Resource allocation type and DCI format no of RB is calculated.
+#					Please refer TS 36.213 for more detail.
+###########################################################################
 def get_NoofRbs(Bits,Dci_Format):
 	if match("^1[ABCD]",Dci_Format):
 		return ceil(log((DL_BW*(DL_BW+1)/2),2))
@@ -203,11 +212,11 @@ def SUBFRAME_IND():
 #	Function Name	:	HI_DCI0_REQ
 #	Author			:	Chandan Kumar(chandan.kumar@votarytech.com)
 #	Input			:	FH -> FileHandler
-#						Frame -> Wireshark Frame Number
-#						worksheet -> Current worksheet
-#						row -> Current row in worksheet
-#						format1 -> Format for writing data in a cell 
-#						UL_Q -> BUffer Queue of lenght 4 SF
+#					Frame -> Wireshark Frame Number
+#					worksheet -> Current worksheet
+#					row -> Current row in worksheet
+#					format1 -> Format for writing data in a cell 
+#					UL_Q -> BUffer Queue of lenght 4 SF
 #	Return Value	:	Row number 
 #	Description		:	This funtion collects all information of HI_DCI0 message.
 #						For HI PDU the UL_Q buffer has been used to find its RNTI value(4 SF back checking RB Start in UL_Q) 
@@ -250,11 +259,12 @@ def HI_DCI0_REQ(FH,Frame,worksheet,row,format1,UL_Q):
 					#Message[pdu_type][pdu_type+str(No)]['PHICH_INFO']+=key+value+";"
 					pass
 				elif search("RB Start:",temp_line,I)and rb==1:
-					key="RB Start:";value=temp_line.split("(")[1].split(")")[0] # Take RB Start
-					Message[pdu_type][pdu_type+str(No)]['PHICH_INFO']+=key+value+";"
+					#key="RB Start:";value=temp_line.split("(")[1].split(")")[0] # Take RB Start
+					#Message[pdu_type][pdu_type+str(No)]['PHICH_INFO']+=key+value+";"
+					rb_start=temp_line.split("(")[1].split(")")[0]
 				elif search("HI Value:",temp_line,I):
 					key="HI Value:";value=temp_line.split(":")[1].split()[0]
-					Message[pdu_type][pdu_type+str(No)]['PHICH_INFO']+=key+value+";" #Take HI Value
+					Message[pdu_type][pdu_type+str(No)]['PHICH_INFO']+=value+";" #Take HI Value
 				elif search("I PHICH:",temp_line,I):
 					Message[pdu_type][pdu_type+str(No)]['DL_PHY_CH']="PHICH"
 				elif search("ul DCI Format:",temp_line,I):
@@ -275,6 +285,9 @@ def HI_DCI0_REQ(FH,Frame,worksheet,row,format1,UL_Q):
 					Message[pdu_type][pdu_type+str(No)]['UL_PDCCH_INFO']+=key+value+";"
 				elif search("new Data Indication:",temp_line,I):
 					key="NDI:";value=temp_line.split("(")[1].split(")")[0]
+					Message[pdu_type][pdu_type+str(No)]['UL_PDCCH_INFO']+=key+value+";"
+				elif search("^\s*cqi\s*request\s*:\s*\w+\s*\(0x\d+\)\s*$",temp_line,I):
+					key="APERIODIC_CQI:";value=temp_line.split('CQI_')[1].split()[0];
 					Message[pdu_type][pdu_type+str(No)]['UL_PDCCH_INFO']+=key+value+";"
 				elif search("^\s*$",temp_line):
 					break
@@ -299,8 +312,8 @@ def HI_DCI0_REQ(FH,Frame,worksheet,row,format1,UL_Q):
 				Temp_Message[key]=value
 			if i==1:
 				sfn,sf=get_sfn_sf(Message['SFN'],Message['SF'])
-				rb_start=""
-				rb_start=int(Temp_Message['PHICH_INFO'].split("RB Start")[1].split(";")[0].split(":")[1])
+#				rb_start=""
+				#rb_start=int(Temp_Message['PHICH_INFO'].split("RB Start")[1].split(";")[0].split(":")[1])
 				RNTI=get_data_from_UL_Q(sfn,sf,"ULSCH",None,1,None,rb_start,UL_Q)
 				Temp_Message['RNTI']=RNTI
 			if Temp_Message['RNTI'] not in ['',None]:
@@ -352,7 +365,8 @@ def HARQ_IND(FH,Frame,worksheet,row,format1,UL_Q):
 				elif search("HARQ TB 1:",temp_line,I):
 					Message['PDUs']['HARQ'+str(count)]['DL_HARQ_TB_1']=temp_line.split(":")[1].split()[0]
 				elif search("HARQ TB 2:",temp_line,I):
-					Message['PDUs']['HARQ'+str(count)]['DL_HARQ_TB_2']=temp_line.split(":")[1].split()[0]
+					#Message['PDUs']['HARQ'+str(count)]['DL_HARQ_TB_2']=temp_line.split(":")[1].split()[0]
+					pass
 				elif search("^\s*$",temp_line,I):
 					break
 				else:
@@ -375,15 +389,15 @@ def HARQ_IND(FH,Frame,worksheet,row,format1,UL_Q):
 	return row
 ###########################################################################
 #	Function Name	:	CRC_IND
-#	Author			:	Chandan Kumar(chandan.kumar@votarytech.com)
-#	Inputs			:	FH -> File Handler
-#						Frame -> Wireshark Frame Number
-#						worksheet -> Current worksheet
-#						row -> Current row in worksheet
-#						format1 -> Format for writing data in a cell 
-#	Return Value	:	Row Number
-#	Description		:	This function collects all required information  in CRC.Indication message
-#						For each CRC PDU data is wtitten on Excel sheet and after that row number is returned to Driver.py
+#	Author		:	Chandan Kumar(chandan.kumar@votarytech.com)
+#	Inputs		:	FH -> File Handler
+#					Frame -> Wireshark Frame Number
+#					worksheet -> Current worksheet
+#					row -> Current row in worksheet
+#					format1 -> Format for writing data in a cell 
+#	Return Value	:	A Dictionary to Driver.py
+#	Description		:	This function collects all required information  in CRC.Indication message and stored in a dictionary
+#					This dictionary is returned to Driver.py which is then passed to RX_ULSCH.Indication Message.			
 ###########################################################################
 
 def CRC_IND(FH,Frame,worksheet,row,format1):
@@ -438,15 +452,15 @@ def CRC_IND(FH,Frame,worksheet,row,format1):
 	return Message
 ###########################################################################
 #	FUnction Name	:	RX_ULSCH_IND
-#	Author			:	Chandan Kumar(chandan.kumar@votarytech.com)
+#	Author		:	Chandan Kumar(chandan.kumar@votarytech.com)
 #	Input			:	FH -> FileHandler
-#						Frame -> Wireshark Frame Number
-#						worksheet -> Current worksheet
-#						row -> Current row in worksheet
-#						format1 -> Format for writing data in a cell 
+#					Frame -> Wireshark Frame Number
+#					worksheet -> Current worksheet
+#					row -> Current row in worksheet
+#					format1 -> Format for writing data in a cell 
 #	Return Value	:	Row Number 
 #	Description		:	This funtion collects all information of RX_ULSCH_IND message.
-#						For each PDU data has been written in Excel Sheet after which next row number has been returned to Driver.py
+#					For each PDU data has been written in Excel Sheet after which next row number has been returned to Driver.py
 ###########################################################################
 def RX_ULSCH_IND(FH,Frame_No,worksheet,row,format1,CRC_Message): 
 	Message={};N_PDU=0;Message['Msg_Type']="RX_ULSCH_IND";
@@ -525,15 +539,15 @@ def RX_ULSCH_IND(FH,Frame_No,worksheet,row,format1,CRC_Message):
 	return row
 ###########################################################################
 #	Function Name	:	RACH_IND
-#	Author			:	Chandan Kumar(chandan.kumar@votarytech.com)
+#	Author		:	Chandan Kumar(chandan.kumar@votarytech.com)
 #	Input			:	FH -> FileHandler
-#						Frame -> Wireshark Frame Number
-#						worksheet -> Current worksheet
-#						row -> Current row in worksheet
-#						format1 -> Format for writing data in a cell 
+#					Frame -> Wireshark Frame Number
+#					worksheet -> Current worksheet
+#					row -> Current row in worksheet
+#					format1 -> Format for writing data in a cell 
 #	Return Value	:	Row Number
 #	Description		:	This function collects all required information in Rach.Indication Message.
-#						For each preamble it writes data into excel sheet after which row number has been returned to Driver.py
+#					For each preamble it writes data into excel sheet after which row number has been returned to Driver.py
 ###########################################################################
 def RACH_IND(FH,Frame,worksheet,row,format1):
 	Message={};N_PRE=0;count=-1
@@ -585,15 +599,15 @@ def RACH_IND(FH,Frame,worksheet,row,format1):
 	return row
 ###########################################################################
 #	Function Name	:	SRS_IND
-#	Author			:	Chandan Kumar(chandan.kumar@votarytech.com)
-#	Inputs			:	FH -> FileHandler
-#						Frame -> Wireshark Frame Number
-#						worksheet -> Current worksheet
-#						row -> Current row in worksheet
-#						format1 -> Format for writing data in a cell 
+#	Author		:	Chandan Kumar(chandan.kumar@votarytech.com)
+#	Inputs		:	FH -> FileHandler
+#					Frame -> Wireshark Frame Number
+#					worksheet -> Current worksheet
+#					row -> Current row in worksheet
+#					format1 -> Format for writing data in a cell 
 #	Return Value	:	Row Number
 #	Description		:	This function collects all required information in SRS.Indication Message.
-#						For each UE it writes data into excel sheet after which row number has been returned to Driver.py
+#					For each UE it writes data into excel sheet after which row number has been returned to Driver.py
 ###########################################################################
 def SRS_IND(FH,Frame,worksheet,row,format1):
 	Message={};N_PDU=0;count=-1
@@ -649,17 +663,17 @@ def SRS_IND(FH,Frame,worksheet,row,format1):
 	return row
 ###########################################################################
 #	Function Name	:	RX_SR_IND
-#	Author			:	Chandan Kumar(chandan.kumar@votarytech.com)
+#	Author		:	Chandan Kumar(chandan.kumar@votarytech.com)
 #	Input			:	FH -> FileHandler
-#						Frame -> Wireshark Frame Number
-#						worksheet -> Current worksheet
-#						row -> Current row in worksheet
-#						format1 -> Format for writing data in a cell 
-#						UL_Q -> BUffer Queue of lenght 4 SF
+#					Frame -> Wireshark Frame Number
+#					worksheet -> Current worksheet
+#					row -> Current row in worksheet
+#					format1 -> Format for writing data in a cell 
+#					UL_Q -> BUffer Queue of lenght 4 SF
 #	Return Value	:	Row number 
 #	Description		:	This funtion collects all information of RX_SR.Indication message.
 #						For getting channel for SR it used UL_Q buffer(Same SF checking for RNTI and its corresponding Channel Type)
-#						For each SR data has been written in Excel Sheet after which next row number has been returned to Driver.py
+#					For each SR data has been written in Excel Sheet after which next row number has been returned to Driver.py
 ###########################################################################
 
 def RX_SR_IND(FH,Frame,worksheet,row,format1,UL_Q):
@@ -708,17 +722,17 @@ def RX_SR_IND(FH,Frame,worksheet,row,format1,UL_Q):
 	return row
 ###########################################################################
 #	Function Name	:	RX_CQI_IND
-#	Author			:	Chandan	Kumar(chandan.kumar@votarytech.com)
-#	Inputs			:	FH -> FileHandler
-#						Frame -> Wireshark Frame Number
-#						worksheet -> Current worksheet
-#						row -> Current row in worksheet
-#						format1 -> Format for writing data in a cell 
-#						UL_Q -> BUffer Queue of lenght 4 SF
+#	Author		:	Chandan	Kumar(chandan.kumar@votarytech.com)
+#	Inputs		:	FH -> FileHandler
+#					Frame -> Wireshark Frame Number
+#					worksheet -> Current worksheet
+#					row -> Current row in worksheet
+#					format1 -> Format for writing data in a cell 
+#					UL_Q -> BUffer Queue of lenght 4 SF
 #	Return Value	:	Row Number
 #	Description		:	This funtion collects all information of RX_CQI.Indication message.
 #						For getting channel for SR it used UL_Q buffer(Same SF checking for RNTI and its corresponding Channel Type)
-#						For each SR data has been written in Excel Sheet after which next row number has been returned to Driver.py
+#					For each SR data has been written in Excel Sheet after which next row number has been returned to Driver.py
 ###########################################################################
 def RX_CQI_IND(FH,Frame,worksheet,row,format1,UL_Q):
 	Message={}
@@ -776,23 +790,23 @@ def RX_CQI_IND(FH,Frame,worksheet,row,format1,UL_Q):
 	return row
 ###########################################################################
 #	Function Name	:	writeToExcel
-#	Author			:	Chandan Kumar(chandan.kumar@votarytech.com)
-#	Inputs			:	worksheet -> Current Worksheet
-#						row -> Current row number
-#						format1 -> Format with which data will be written in a cell
-#						Message -> Dictionary which contains all required data captured for single row in Excel sheet.
+#	Author		:	Chandan Kumar(chandan.kumar@votarytech.com)
+#	Inputs		:	worksheet -> Current Worksheet
+#					row -> Current row number
+#					format1 -> Format with which data will be written in a cell
+#					Message -> Dictionary which contains all required data captured for single row in Excel sheet.
 #	Return Value	: 	None
 #	Description		:	This function is for writing data into excel sheet at particular row.
-#						The field of Message Dictionary should among the items of Message_Header.Otherwise it will throw key error.
+#					The field of Message Dictionary should among the items of Message_Header.Otherwise it will throw key error.
 ###########################################################################
 def writeToExcel(worksheet,row,format1,Message):
 	for key,value in Message.items():
 		worksheet.write(row,Message_Header.index(key),value,format1)	
 ###########################################################################
 #	Function Name	:	createHeaderToExcel
-#	Author			:	Chandan Kumar(chandan.kumar@votarytech.com)
-#	Inputs			:	worksheet -> Current Worksheet
-#					:	format ->	Format used for writing data in Excel
+#	Author		:	Chandan Kumar(chandan.kumar@votarytech.com)
+#	Inputs		:	worksheet -> Current Worksheet
+#				:	format ->	Format used for writing data in Excel
 #	Return Value	:	None
 #	Description		:	This function is for creating Heading Lines in each worksheet.
 ###########################################################################
@@ -852,20 +866,20 @@ def createHeaderToExcel(worksheet,format):
 		worksheet.write(1,Message_Header.index(value[1]),Merge_Data[key][1],format)
 ###########################################################################
 #	Function Name	:	get_data_from_UL_Q	
-#	Author			:	Chandan Kumar(chandan.kumar@votarytech.com)
-#	Inputs			:	sfn -> System Frame Number
-#						sf ->	Subframe Number
-#						pdu_type -> Type of PDU in which required information has to besearched.
-#						get_rnit ->	 Calee function has passed a RNTI value (possible values RNTI/None)
-#						send_rnti -> Calee function has requested a RNTI Value (its kind of flag Possible values 0/1)
-#						send_channel -> Calee function has requested Channel Type (its kind of flag Possible values 0/1)
-#						rb_start -> Calee function passed rb_start (Possible Value Rb_start/None)
-#						UL_Q -> Buffer Queue
+#	Author		:	Chandan Kumar(chandan.kumar@votarytech.com)
+#	Inputs		:	sfn -> System Frame Number
+#					sf ->	Subframe Number
+#					pdu_type -> Type of PDU in which required information has to besearched.
+#					get_rnit ->	 Calee function has passed a RNTI value (possible values RNTI/None)
+#					send_rnti -> Calee function has requested a RNTI Value (its kind of flag Possible values 0/1)
+#					send_channel -> Calee function has requested Channel Type (its kind of flag Possible values 0/1)
+#					rb_start -> Calee function passed rb_start (Possible Value Rb_start/None)
+#					UL_Q -> Buffer Queue
 #	Return Value	:	Channel Type if send_channel set to 1 (CQI,SR,HARQ Indication)
-#						RNTI		 if send rnti is set to 1 (In HI_DCI0 HI PDU need its RNTI )
+#					RNTI		 if send rnti is set to 1 (In HI_DCI0 HI PDU need its RNTI )
 #	Description		:	This function is used to get requested data from UL_Q buffer in particular SFN,SF.
-#						First SFN,SF is searched. After that pdu_type is picked of that sfn,sf. In that PDU we look for required information
-#						Requested information is returned to calee function.
+#					First SFN,SF is searched. After that pdu_type is picked of that sfn,sf. In that PDU we look for required information
+#					Requested information is returned to calee function.
 ###########################################################################
 def get_data_from_UL_Q(sfn,sf,pdu_type,get_rnti,send_rnti,send_channel,rb_start,UL_Q):
 	'''Args Description:
@@ -907,12 +921,12 @@ def get_data_from_UL_Q(sfn,sf,pdu_type,get_rnti,send_rnti,send_channel,rb_start,
 		return return_container
 ###########################################################################
 #	Function Name	:	get_sfn_sf
-#	Author			:	Chandan Kumar(chandan.kumar@votarytech.com)
+#	Author		:	Chandan Kumar(chandan.kumar@votarytech.com)
 #	Input			:	SFN -> System Frame Number
-#						SF ->	Subframe Number
+#					SF ->	Subframe Number
 #	Return Value	:	SFN,SF
 #	Description		:	This function is for calculating SFN and SF 4 subframe back.
-#						The calculated SFN and SF is returned to calee function.
+#					The calculated SFN and SF is returned to calee function.
 ###########################################################################
 def get_sfn_sf(SFN,SF):
 	SFN_R=SF_R=0;
@@ -924,9 +938,9 @@ def get_sfn_sf(SFN,SF):
 	return (SFN_R,SF_R)
 ###########################################################################
 #	Function Name	:	get_CRC
-#	Author			:	Chandan Kumar(chandan.kumar@votarytech.com)
-#	Inputs			:	CRC_Message -> A dictionary framed in CRC.Indication
-#					:	rnti -> RNTI passed by RX_ULSCH.Indication 
+#	Author		:	Chandan Kumar(chandan.kumar@votarytech.com)
+#	Inputs		:	CRC_Message -> A dictionary framed in CRC.Indication
+#				:	rnti -> RNTI passed by RX_ULSCH.Indication 
 #	Return Value	:	CRC_Flag
 #	Description		:	This function finds the CRC_Flag of requested RNTI in CRC dictionary which has been framed in CRC.Indication Message.
 ###########################################################################
@@ -941,17 +955,17 @@ def get_CRC(CRC_Message,rnti):
 	return CRC_flag
 ###########################################################################
 #	FUnction Name	:	TX_REQ
-#	Author			:	Chandan Kumar(chandan.kumar@votarytech.com)
+#	Author		:	Chandan Kumar(chandan.kumar@votarytech.com)
 #	Input			:	FH -> FileHandler
-#						Frame -> Wireshark Frame Number
-#						worksheet -> Current worksheet
-#						row -> Current row in worksheet
-#						format1 -> Format for writing data in a cell
-#						SIB_COmment -> Its a flag which indicate that SIB_COmment as been added to a current worksheet or not(We need only one SIB_Comment in a sheet)
-#						MIB_COmment -> Its a flag which indicate that MIB_COmment as been added to a current worksheet or not(We need only one MIB_Comment in a sheet)
+#					Frame -> Wireshark Frame Number
+#					worksheet -> Current worksheet
+#					row -> Current row in worksheet
+#					format1 -> Format for writing data in a cell
+#					SIB_COmment -> Its a flag which indicate that SIB_COmment as been added to a current worksheet or not(We need only one SIB_Comment in a sheet)
+#					MIB_COmment -> Its a flag which indicate that MIB_COmment as been added to a current worksheet or not(We need only one MIB_Comment in a sheet)
 #	Return Value	:	Row Number,SIB_Comment and MIB_Comment 
 #	Description		:	This funtion collects all information of TX_REQ message.
-#						For each PDU data has been written in Excel Sheet after which next row number,SIB and MIB comment flag has been returned to Driver.py
+#					For each PDU data has been written in Excel Sheet after which next row number,SIB and MIB comment flag has been returned to Driver.py
 ###########################################################################
 def TX_REQ(FH,Frame_No,worksheet,row,format1,SIB_Comment,MIB_Comment,SYS_BW):
 	Message={};N_PDU=0
@@ -1033,6 +1047,11 @@ def TX_REQ(FH,Frame_No,worksheet,row,format1,SIB_Comment,MIB_Comment,SYS_BW):
 					Message['PDUs']['PDU'+str(count)]['RAR_CONTENT']+="UL_Grant:"+temp_line.split(":")[1].strip()+";"
 				elif search("^\s*Temporary\s*C-RNTI:",temp_line,I) and RAR==1:
 					Message['PDUs']['PDU'+str(count)]['RAR_CONTENT']+="T_CRNTI:"+temp_line.split(":")[1].strip()
+				elif search("^\s*.*cqi\s*request\s*:\s*\d+",temp_line,I):
+					key="APERIODIC_CQI:";value=int(temp_line.split(':')[1].strip());value1="REQUESTED"
+					if value==0:
+						value1="NOT_REQUESTED"
+					Message['PDUs']['PDU'+str(count)]['RAR_CONTENT']+=key+value1+";"
 				elif search("^\s*$|^\s*padding\s+data\s*:\s+\d+|^\s*MAC\s*:\s*",temp_line,I):
 					LTE_RRC=0;
 					continue
@@ -1071,8 +1090,8 @@ def TX_REQ(FH,Frame_No,worksheet,row,format1,SIB_Comment,MIB_Comment,SYS_BW):
 	del(Message,Temp_Message,N_PDU,Frame_No,count,no,RAR,SIB,LTE_RRC,Sibs)
 	return row,SIB_Comment,MIB_Comment;
 ###########################################################################
-#FUnction Name	:	getP_Value
-#	Author			:	Chandan Kumar(chandan.kumar@votarytech.com)
+#	FUnction Name	:	getP_Value
+#	Author		:	Chandan Kumar(chandan.kumar@votarytech.com)
 #	Input			:	n -> DL_Bandwidth in terms of RB
 #	Return Value	:	P_Value
 #	Description		:	This function calculate P_Value based on input provided
@@ -1088,7 +1107,7 @@ def getP_Value(n):
 		return 4
 ###########################################################################
 #	FUnction Name	:	pcap2textConvert
-#	Author			:	Chandan Kumar(chandan.kumar@votarytech.com)
+#	Author		:	Chandan Kumar(chandan.kumar@votarytech.com)
 #	Input			:	file_name -> Pcap File Name
 #	Return Value	:	Converted Text File name
 #	Description		:	This function is for converting a wireshark capture file(pcap file)  into a text file.
@@ -1101,7 +1120,7 @@ def pcap2textConvert(file_name):
 	return (Log_File+".txt")
 ###########################################################################
 #	File Name		:	generateREADME
-#	Author			:	Chandan Kumar(chandan.kumar@votarytech.com)
+#	Author		:	Chandan Kumar(chandan.kumar@votarytech.com)
 #	Input			:	None
 #	Return Value	:	None
 #	Description		:	This function is for generating README file in the current working directory.
