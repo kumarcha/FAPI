@@ -7,8 +7,11 @@ except ImportError:
 from Functions import * #Import all sub routines from File Functions
 from re import search,match,I # import search,match and Ignore Case from Regular Expression(Module name :re)	
 File_pcap=False
-if len(sys.argv) ==2:
+if len(sys.argv) ==3:
 	LOG_FILE_NAME=sys.argv[1]		#provide log file using command line argument
+	SYS_BW=int(sys.argv[2])
+	if int(SYS_BW) not in [1.4,3,5,10,20]:
+		sys.exit('Invalid System Bandwidth!! LTE Supoorts [1.4,3,5,6,15,20] MHz Only.')
 	if search("\.pcap",LOG_FILE_NAME,I):
 		LOG_FILE_NAME=pcap2textConvert(LOG_FILE_NAME)	
 		EXCEL_FILE_NAME=LOG_FILE_NAME.split(".")[0]+".xlsx"	
@@ -69,7 +72,7 @@ try:
 			elif search("Msg Id:",line,I):
 				Msg_id=line.split(":")[1].split()[0]
 				if Msg_id=="0x80" :
-					row=DL_CONFIG_REQ(LOG_FH,Frame,worksheet,row,format1)
+					row=DL_CONFIG_REQ(LOG_FH,Frame,worksheet,row,format1,SYS_BW)
 				elif Msg_id=="0x81":
 					T=UL_CONFIG_REQ(LOG_FH)
 					if len(UL_Q) <4:
@@ -84,7 +87,7 @@ try:
 				elif Msg_id=="0x83":
 					row=HI_DCI0_REQ(LOG_FH,Frame,worksheet,row,format1,UL_Q)
 				elif Msg_id=="0x84":
-					row,SIB_Comment,MIB_Comment=TX_REQ(LOG_FH,Frame,worksheet,row,format1,SIB_Comment,MIB_Comment)
+					row,SIB_Comment,MIB_Comment=TX_REQ(LOG_FH,Frame,worksheet,row,format1,SIB_Comment,MIB_Comment,SYS_BW)
 				elif Msg_id=="0x85":
 					row=HARQ_IND(LOG_FH,Frame,worksheet,row,format1,UL_Q)
 				elif Msg_id=="0x86":

@@ -8,13 +8,14 @@
 
 # Importing required functions from its respective module
 from re import search,match,I,sub
-from os import path,system
+from os import path,system,_exit
 from math import log,ceil
 #Message Header 1st Line of Excel Sheet
 Message_Header=['PACKET_NUMBER','Msg_Type','SFN','SF','RNTI','RNTI_TYPE','RRC_Message','NAS_Message','DL_PHY_CH','UL_PHY_CH','CFI','DL_DCI',
 'DL_PDCCH_INFO','UL_DCI','UL_PDCCH_INFO','RACH_CONTENT','RAR_CONTENT','PHICH_INFO','RI','CQI_PMI_INFO','DL_HARQ_TB_1','DL_HARQ_TB_2','SRS','BSR','PHR','CRC']
-P_Value=3
-DL_BW=50
+nRB={1.4:6,3:15,5:25,10:50,20:100}
+P_Value=0
+DL_BW=0
 ###########################################################################
 # 	Function Name 	:	DL_CONFIG_REQ
 # 	Author					:	Chandan Kumar(chandan.kumar@votarytech.com) 
@@ -27,11 +28,13 @@ DL_BW=50
 #	Description				:	This function process only DCI PDU in DL_Config.request(Msg.Id=0x80) Message.
 #											For each PDU data has been written in Excel Sheet after which next row number has been returned to Driver.py
 ###########################################################################
-def DL_CONFIG_REQ(FH,Frame,worksheet,row,format1):
+def DL_CONFIG_REQ(FH,Frame,worksheet,row,format1,SYS_BW):
+	global P_Value,DL_BW
 	Message={} #This DS will store all releavent information within one Frame
 	Message['PACKET_NUMBER']=Frame
 	for line in FH:
 		count=-1;N_DCI=0; # N_DCI is the number of DCI Present in Frame and Count is used as index for different PDUs
+		DL_BW=nRB[SYS_BW]
 		flag=0;Avail_BW=DL_BW
 		if match("Frame\s+\d+\s*",line):
 			break
@@ -71,6 +74,8 @@ def DL_CONFIG_REQ(FH,Frame,worksheet,row,format1):
 				elif search("^\s+rb+\s+coding\s*:\s+0x.*\s+\(\d+\)",temp_line,I) and flag==2:
 					key=temp_line.strip().split(":")[0];value=bin(int(temp_line.split(":")[1].split()[1].split('(')[1].split(')')[0])).split('b')[1]
 					key1="NoOfRBs";value1=value.count('1')
+					if P_Value==0:
+						P_Value=getP_Value(DL_BW)
 					NoOfRbs=int(get_NoofRbs(value1,Message['PDUs']['DCI'+str(count)]['DL_DCI']))
 					if NoOfRbs>Avail_BW:
 						NoOfRbs=Avail_BW
@@ -948,7 +953,7 @@ def get_CRC(CRC_Message,rnti):
 #	Description		:	This funtion collects all information of TX_REQ message.
 #						For each PDU data has been written in Excel Sheet after which next row number,SIB and MIB comment flag has been returned to Driver.py
 ###########################################################################
-def TX_REQ(FH,Frame_No,worksheet,row,format1,SIB_Comment,MIB_Comment):
+def TX_REQ(FH,Frame_No,worksheet,row,format1,SIB_Comment,MIB_Comment,SYS_BW):
 	Message={};N_PDU=0
 	Message['PACKET_NUMBER']=Frame_No
 	Message['Msg_Type']="TX_REQUEST"
@@ -987,6 +992,9 @@ def TX_REQ(FH,Frame_No,worksheet,row,format1,SIB_Comment,MIB_Comment):
 					del Message['PDUs']['PDU'+str(count)]['RNTI_TYPE']
 				elif search("dl-Bandwidth:",temp_line,I) and LTE_RRC==1:
 					DL_BW=int(temp_line.split(":")[1].split()[0].split('n')[1])
+					if DL_BW != nRB[SYS_BW]:
+						print('System bandwidth and nRB(MIB) Mismatch!!')
+						_exit(1)
 					P_Value=getP_Value(DL_BW)
 				elif search("^\s*nas\s+eps\s+\w+\s+management\s+message.*:\s+.*\(.*\)\s*",temp_line,I)and LTE_RRC==1:
 					Message['PDUs']['PDU'+str(count)]['NAS_Message']+=temp_line.split(":")[1].split('(')[0].strip()+";" #NAS Message
