@@ -145,6 +145,8 @@ def UL_CONFIG_REQ(FH):
 	#This Function is used to Form Message Data Structure for UL Config. And this Message Data Structure will be returnd to Driver 
 	# and there it will be maintain as Queue for geting information for HI,CQI and SR 
 	Message={}
+	PDU_TYPE={'0x00':['ULSCH'],'0x01':['CQI'],'0x02':['HARQ'],'0x03':['CQI','HARQ'],'0x04':['CQI'],'0x05':['SR'],'0x06':['HARQ'],'0x07':['SR','HARQ'],'0x08':['CQI','HARQ'],'0x09':['CQI','SR'],'0x0a':['CQI','SR','HARQ'],'0x0b':['SRS'],'0x0c':['HARQ_BUFFER']}
+	PDU_TYPE_COUNT={'CQI':-1,'HARQ':-1,'SR':-1,'ULSCH':-1}
 	CQI_count=HARQ_count=ULSCH_count=SR_count=-1 # Index for each PDU type 
 	for line in FH:
 		if match("Frame\s+\d+\s*",line):
@@ -158,7 +160,7 @@ def UL_CONFIG_REQ(FH):
 			if N_PDU>0:
 				Message['N_PDU']=N_PDU
 		if 'N_PDU' in Message and N_PDU>0:
-			pdu_type="";No=0;
+			pdu_type="";No=0;pducode=None
 			Message['HARQ']={};Message['ULSCH']={};Message['CQI']={};Message['SR']={}
 			while N_PDU>=0:
 				temp_line=FH.next()
@@ -166,37 +168,22 @@ def UL_CONFIG_REQ(FH):
 					flag=0;ulconfigPdu="";N_PDU=N_PDU-1;
 				elif search("ULConfigPduType",temp_line,I):
 					ulconfigPdu=temp_line.split(":")[1].split()[0].rstrip()
-				elif search("HARQ PDU Info",temp_line,I):
-					pdu_type="HARQ";flag=1 #seting Pdu Type as HARQ PDU
-					HARQ_count=HARQ_count+1
-					No=HARQ_count
-					Message[pdu_type][pdu_type+str(No)]={} # create new DS for pdu type
-					Message[pdu_type][pdu_type+str(No)]['ULConfigPduType']=ulconfigPdu
-				elif search("CQI PDU Info",temp_line,I):
-					pdu_type="CQI";flag=1 #seting Pdu Type as CQI PDU
-					CQI_count=CQI_count+1
-					No=CQI_count
-					Message[pdu_type][pdu_type+str(No)]={}
-					Message[pdu_type][pdu_type+str(No)]['ULConfigPduType']=ulconfigPdu
-				elif search("SR PDU INFO",temp_line,I):
-					pdu_type="SR";flag=1 #seting Pdu Type as SR PDU
-					SR_count=SR_count+1
-					No=SR_count
-					#print "SR PDU INFO",No
-					Message[pdu_type][pdu_type+str(No)]={}
-					Message[pdu_type][pdu_type+str(No)]['ULConfigPduType']=ulconfigPdu
-				elif search("ULSCH PDU INFO",temp_line,I):
-					pdu_type="ULSCH";flag=1 #seting Pdu Type as ULSCH PDU
-					ULSCH_count=ULSCH_count+1
-					No=ULSCH_count
-					Message[pdu_type][pdu_type+str(No)]={};
-					Message[pdu_type][pdu_type+str(No)]['ULConfigPduType']=ulconfigPdu
-				elif search("Rnti:",temp_line,I) and flag==1:
+					pducode=temp_line.split(":")[1].split()[1].split('(')[1].split(')')[0]
+					if pducode not in ['0x0b','0x0c']:
+						for pdu in PDU_TYPE[pducode]:
+							PDU_TYPE_COUNT[pdu]+=1
+							Message[pdu][pdu+str(PDU_TYPE_COUNT[pdu])]={}
+							Message[pdu][pdu+str(PDU_TYPE_COUNT[pdu])]['ULConfigPduType']=ulconfigPdu
+				elif search("Rnti:",temp_line,I):
 					value=temp_line.split(":")[1].split("(")[1].split(")")[0].rstrip()
-					Message[pdu_type][pdu_type+str(No)]['RNTI']=value;
-				elif search("RB Start:",temp_line,I) and flag==1:
+					if pducode not in ['0x0b','0x0c']:
+						for pdu in PDU_TYPE[pducode]:
+							Message[pdu][pdu+str(PDU_TYPE_COUNT[pdu])]['RNTI']=value
+				elif search("RB Start:",temp_line,I):
 					key=temp_line.split(":")[0].strip();value=temp_line.split(":")[1].split("(")[1].split(")")[0] #Take RB Start
-					Message[pdu_type][pdu_type+str(No)][key]=value;
+					if pducode not in ['0x0b','0x0c']:
+						for pdu in PDU_TYPE[pducode]:
+							Message[pdu][pdu+str(PDU_TYPE_COUNT[pdu])][key]=value
 				elif search("^\s*$",temp_line):
 					break
 				else:
@@ -385,7 +372,7 @@ def HARQ_IND(FH,Frame,worksheet,row,format1,UL_Q):
 		Temp_Message['UL_PHY_CH']=get_data_from_UL_Q(Message['SFN'],Message['SF'],"HARQ",Temp_Message['RNTI'],None,1,None,UL_Q)
 		writeToExcel(worksheet,row,format1,Temp_Message)
 		row=row+1
-	del(Message,Temp_Message,N_HARQ,no,count,Frame)
+	del(Message,Temp_Message,N_HARQ,count,Frame)
 	return row
 ###########################################################################
 #	Function Name	:	CRC_IND
@@ -495,6 +482,8 @@ def RX_ULSCH_IND(FH,Frame_No,worksheet,row,format1,CRC_Message):
 					break
 				elif search("^\s+\w+\s+BSR\s+",temp_line,I):
 					Message['PDUs']['PDU'+str(count)]['BSR']=temp_line.strip().split("BSR")[0].strip()+"_BSR"
+					if search("long\s*bsr",temp_line,I):
+						Message['PDUs']['PDU'+str(count)]['BSR']+=":"+sub(r'(\d+):',r'LCGID:\1',temp_line.split("BSR")[1].strip()).replace(" ","")
 					temp_line=FH.next()
 					if search("^\s*.*Logical\s+channel\s+Group\s+id\s*:\s*\d+",temp_line,I):
 						Message['PDUs']['PDU'+str(count)]['BSR']+=";LCG_ID:"+temp_line.split(":")[1].strip()
@@ -859,11 +848,14 @@ def createHeaderToExcel(worksheet,format):
 	for i in Message_Header:
 		worksheet.set_column(Message_Header.index(i),Message_Header.index(i),Set_Cols[i])
 		worksheet.write(0,Message_Header.index(i),i,format)
-		worksheet.write(1,Message_Header.index(i),"",format)
+		#worksheet.write(1,Message_Header.index(i),"",format)
+		pass
+	'''
 	for key,value in Merge_Info.items():
 		worksheet.merge_range(0,Message_Header.index(value[0]),0,Message_Header.index(value[1]),key,format)
 		worksheet.write(1,Message_Header.index(value[0]),Merge_Data[key][0],format)
 		worksheet.write(1,Message_Header.index(value[1]),Merge_Data[key][1],format)
+	'''
 ###########################################################################
 #	Function Name	:	get_data_from_UL_Q	
 #	Author		:	Chandan Kumar(chandan.kumar@votarytech.com)
@@ -900,8 +892,12 @@ def get_data_from_UL_Q(sfn,sf,pdu_type,get_rnti,send_rnti,send_channel,rb_start,
 			elif key=='SF' and value==sf:
 				flag_sf=1
 			if (flag_sfn & flag_sf)==1:
-				pdu_list=one_frame[pdu_type]
-				break
+				if pdu_type in one_frame :
+					pdu_list=one_frame[pdu_type]
+					break
+				else:
+					#print sfn,sf,"Not Having ",pdu_type
+					pass
 	if send_channel==1:
 		for key,value in pdu_list.items():
 			for key1,value1 in value.items():
