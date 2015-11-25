@@ -12,7 +12,7 @@ from os import path,system,_exit
 from math import log,ceil
 #Message Header 1st Line of Excel Sheet
 Message_Header=['PACKET_NUMBER','Msg_Type','SFN','SF','RNTI','RNTI_TYPE','RRC_Message','NAS_Message','DL_PHY_CH','UL_PHY_CH','CFI','DL_DCI',
-'DL_PDCCH_INFO','UL_DCI','UL_PDCCH_INFO','RACH_CONTENT','RAR_CONTENT','PHICH_INFO','RI','CQI_PMI_INFO','DL_HARQ_TB_1','DL_HARQ_TB_2','SRS','BSR','PHR','CRC']
+'DL_PDCCH_INFO','UL_DCI','UL_PDCCH_INFO','RACH_CONTENT','RAR_CONTENT','PHICH_INFO','RI','CQI_INFO','DL_HARQ_TB_1','DL_HARQ_TB_2','SRS','BSR','PHR','CRC']
 nRB={1.4:6,3:15,5:25,10:50,20:100}
 P_Value=0
 DL_BW=0
@@ -30,7 +30,8 @@ DL_BW=0
 ###########################################################################
 def DL_CONFIG_REQ(FH,Frame,worksheet,row,format1,SYS_BW):
 	global P_Value,DL_BW
-	Message={} #This DS will store all releavent information within one Frame
+	Message={}	#This DS will store all releavent information within one Frame
+	DL_Buf={}
 	Message['PACKET_NUMBER']=Frame
 	for line in FH:
 		count=-1;N_DCI=0; # N_DCI is the number of DCI Present in Frame and Count is used as index for different PDUs
@@ -40,8 +41,10 @@ def DL_CONFIG_REQ(FH,Frame,worksheet,row,format1,SYS_BW):
 			break
 		elif search("Sf:",line):
 			Message['SF']=int(line.split(":")[1].rstrip())
+			DL_Buf.update(SF=Message['SF'])
 		elif search("Sfn:",line):
 			Message['SFN']=int(line.split(":")[1].rstrip())
+			DL_Buf.update(SFN=Message['SFN'])
 		elif search("CFI:",line):
 			Message['CFI']=int(line.split("(")[1].split(")")[0].rstrip())
 		elif search("Num of DCI:",line):
@@ -49,6 +52,7 @@ def DL_CONFIG_REQ(FH,Frame,worksheet,row,format1,SYS_BW):
 			N_DCI=Message['N_DCI'] 
 		if 'N_DCI' in Message and N_DCI>0:
 			Message['PDUs']={}
+			DL_Buf['PDUs']={}
 			flag=0
 			Message['DL_PHY_CH']="PDCCH"
 			while N_DCI>=0:
@@ -58,19 +62,26 @@ def DL_CONFIG_REQ(FH,Frame,worksheet,row,format1,SYS_BW):
 				elif search("DCI DL PDU INFO",temp_line) and flag==1:
 					count=count+1
 					Message['PDUs']['DCI'+str(count)]={} # Creating New Field for each DCI Pdu
+					DL_Buf['PDUs']['DCI'+str(count)]={}
 					N_DCI=N_DCI-1;flag=2
 					Message['PDUs']['DCI'+str(count)]['DL_PDCCH_INFO']="" # Information About DL_PDCCH
 				elif search("DciFormat",temp_line) and flag==2:
-					Message['PDUs']['DCI'+str(count)]['DL_DCI']=temp_line.split(":")[1].split("_")[-1].split()[0]
+					value=temp_line.split(":")[1].split("_")[-1].split()[0]
+					Message['PDUs']['DCI'+str(count)]['DL_DCI']=value
+					DL_Buf['PDUs']['DCI'+str(count)].update(DCI_FORMAT=value)
 				elif search("rnti:",temp_line) and flag==2:
 					Message['PDUs']['DCI'+str(count)]['RNTI']=temp_line.split(":")[1].split('(')[1].split(')')[0]
 					rnti=Message['PDUs']['DCI'+str(count)]['RNTI']
+					DL_Buf['PDUs']['DCI'+str(count)].update(RNTI=int(rnti))
 				elif search("MCS\s+\d+:",temp_line,I)and flag==2:
 					key=temp_line.split(":")[0].strip();value=temp_line.split(":")[1].split("(")[1].split(")")[0]
-					Message['PDUs']['DCI'+str(count)]['DL_PDCCH_INFO']=key+":"+value+";"+Message['PDUs']['DCI'+str(count)]['DL_PDCCH_INFO'].rstrip() # Concating Strings
+					Message['PDUs']['DCI'+str(count)]['DL_PDCCH_INFO']+=key+":"+value+";" # Concating Strings
 				elif search("new Data Indicator\s\d+:",temp_line,I) and flag==2:
 					key=temp_line.split(":")[0].strip().split()[-1];value=temp_line.split(":")[1].split("(")[1].split(")")[0]
-					Message['PDUs']['DCI'+str(count)]['DL_PDCCH_INFO']="NDI_"+key+":"+value+";"+Message['PDUs']['DCI'+str(count)]['DL_PDCCH_INFO'].rstrip()
+					Message['PDUs']['DCI'+str(count)]['DL_PDCCH_INFO']+="NDI_"+key+":"+value+";"
+				elif search("^\s*aggregation\s*level\s*:\s*\w+\s*\(0x\d+\)",temp_line,I) and flag==2:
+					key="Agg Level:";value=temp_line.split(":")[1].split()[0][-1]
+					Message['PDUs']['DCI'+str(count)]['DL_PDCCH_INFO']+=key+":"+value+";"
 				elif search("^\s+rb+\s+coding\s*:\s+0x.*\s+\(\d+\)",temp_line,I) and flag==2:
 					key=temp_line.strip().split(":")[0];value=bin(int(temp_line.split(":")[1].split()[1].split('(')[1].split(')')[0])).split('b')[1]
 					key1="NoOfRBs";value1=value.count('1')
@@ -81,22 +92,28 @@ def DL_CONFIG_REQ(FH,Frame,worksheet,row,format1,SYS_BW):
 						NoOfRbs=Avail_BW
 					else:
 						Avail_BW=Avail_BW-NoOfRbs
-					Message['PDUs']['DCI'+str(count)]['DL_PDCCH_INFO']=key+":"+value+"(NoOfRBs:"+str(NoOfRbs)+");"+Message['PDUs']['DCI'+str(count)]['DL_PDCCH_INFO'].rstrip()
+					Message['PDUs']['DCI'+str(count)]['DL_PDCCH_INFO']+=key+":"+value+"(NoOfRBs:"+str(NoOfRbs)+");"
 				elif search("harq Process Num:",temp_line,I) and flag==2:
 					key=temp_line.split(":")[0].strip();value=temp_line.split(":")[1].split("(")[1].split(")")[0]
-					Message['PDUs']['DCI'+str(count)]['DL_PDCCH_INFO']="HarqPID"+":"+value+";"+Message['PDUs']['DCI'+str(count)]['DL_PDCCH_INFO'].rstrip()
+					Message['PDUs']['DCI'+str(count)]['DL_PDCCH_INFO']+="HarqPID"+":"+value+";"
 				elif search("redundancy Version\s\d+:",temp_line,I) and flag==2:
 					key=temp_line.split(":")[0].strip().split()[-1];value=temp_line.split(":")[1].split("(")[1].split(")")[0]
-					Message['PDUs']['DCI'+str(count)]['DL_PDCCH_INFO']="RV"+key+":"+value+";"+Message['PDUs']['DCI'+str(count)]['DL_PDCCH_INFO'].rstrip()
+					Message['PDUs']['DCI'+str(count)]['DL_PDCCH_INFO']+="RV"+key+":"+value+";"
+				elif search("^\s*tpc\s*:\s*\w+\s*\(0x\d+\)",temp_line,I):
+					key="TPC:";value=temp_line.split(":")[1].split()[0].split('FAPI_')[1]
+					Message['PDUs']['DCI'+str(count)]['DL_PDCCH_INFO']+=key+value+";"
 				elif search("rnti Type:",temp_line) and flag==2:
-					key=temp_line.split(":")[0].strip();
-					if rnti=='65535':
-						value='SI_RNTI'
-					elif rnti=='65534':
-						value='P_RNTI'
+					key=temp_line.split(":")[0].strip();value1=temp_line.split(":")[1].split()[0]
+					if search("C_RNTI",temp_line,I):
+						value="C_RNTI"
 					else:
+						if rnti=='65535':
+							value='SI_RNTI'
+						elif rnti=='65534':
+							value='P_RNTI'
+						else:
 						#value='_'.join(temp_line.split(":")[1].split()[0].split("_")[1:])
-						value='RA_RNTI'
+							value='RA_RNTI'
 					Message['PDUs']['DCI'+str(count)]['_'.join(key.upper().split())]=value
 				elif search("^\s*$",temp_line):
 					break # If New Line is there then End of Frame
@@ -115,8 +132,8 @@ def DL_CONFIG_REQ(FH,Frame,worksheet,row,format1,SYS_BW):
 			Temp_Message[key]=value # Now Copy all values per PDU 
 		writeToExcel(worksheet,row,format1,Temp_Message) # Write the Temp_Message DS to excel in single row
 		row=row+1 # Increament Row for next Line in Excel
-	del(Message,Temp_Message,N_DCI,Frame,flag,count) #Delete all Temporary Message after Writing data on Excel
-	return row #return the Row number to Driver file 
+	#del(Message,Temp_Message,N_DCI,Frame,flag,count) #Delete all Temporary Message after Writing data on Excel
+	return row,DL_Buf #return the Row number to Driver file 
 ###########################################################################
 #	Function Name	:	get_NoofRbs
 #	Author		:	Chandan Kumar(chandan.kumar@votarytech.com)
@@ -273,6 +290,9 @@ def HI_DCI0_REQ(FH,Frame,worksheet,row,format1,UL_Q):
 				elif search("new Data Indication:",temp_line,I):
 					key="NDI:";value=temp_line.split("(")[1].split(")")[0]
 					Message[pdu_type][pdu_type+str(No)]['UL_PDCCH_INFO']+=key+value+";"
+				elif search("^\s*tpc\s*:\s*\w+\s*\(0x\d+\)",temp_line,I):
+					key="TPC:";value=temp_line.split(":")[1].split()[0].split('FAPI_')[1]
+					Message[pdu_type][pdu_type+str(No)]['UL_PDCCH_INFO']+=key+value+";"
 				elif search("^\s*cqi\s*request\s*:\s*\w+\s*\(0x\d+\)\s*$",temp_line,I):
 					key="APERIODIC_CQI:";value=temp_line.split('CQI_')[1].split()[0];
 					Message[pdu_type][pdu_type+str(No)]['UL_PDCCH_INFO']+=key+value+";"
@@ -308,7 +328,7 @@ def HI_DCI0_REQ(FH,Frame,worksheet,row,format1,UL_Q):
 			writeToExcel(worksheet,row,format1,Temp_Message)
 			row=row+1
 		Temp_Message.clear()
-	del(Message,Temp_Message,N_HI,N_DCI,p_type,DCI_count,HI_count,no,count,Frame)
+	#del(Message,Temp_Message,N_HI,N_DCI,p_type,DCI_count,HI_count,no,count,Frame)
 	return row
 ###########################################################################
 #	Function Name	:	HARQ_IND
@@ -325,7 +345,7 @@ def HI_DCI0_REQ(FH,Frame,worksheet,row,format1,UL_Q):
 #						For each PDU data has been written in Excel Sheet after which next row number has been returned to Driver.py
 ###########################################################################
 		
-def HARQ_IND(FH,Frame,worksheet,row,format1,UL_Q):
+def HARQ_IND(FH,Frame,worksheet,row,format1,UL_Q,DL_Q):
 	Message={};N_HARQ=0;
 	Message['PACKET_NUMBER']=Frame
 	for line in FH:
@@ -339,7 +359,7 @@ def HARQ_IND(FH,Frame,worksheet,row,format1,UL_Q):
 			Message['N_HARQ']=int(line.split("(")[1].split(")")[0])
 			N_HARQ=Message['N_HARQ']
 		if N_HARQ>0:
-			Message['PDUs']={};count=-1
+			Message['PDUs']={};count=-1;rnti=None
 			while N_HARQ>=0:
 				temp_line=FH.next()
 				if search("HARQ PDU Indication",temp_line,I):
@@ -348,12 +368,17 @@ def HARQ_IND(FH,Frame,worksheet,row,format1,UL_Q):
 					N_HARQ=N_HARQ-1
 				elif search("RNTI:",temp_line,I):
 					Message['PDUs']['HARQ'+str(count)]['RNTI']=temp_line.split('(')[1].split(')')[0]
+					rnti=int(Message['PDUs']['HARQ'+str(count)]['RNTI'])
 					Message['PDUs']['HARQ'+str(count)]['RNTI_TYPE']="C_RNTI"
 				elif search("HARQ TB 1:",temp_line,I):
-					Message['PDUs']['HARQ'+str(count)]['DL_HARQ_TB_1']=temp_line.split(":")[1].split()[0]
+					Message['PDUs']['HARQ'+str(count)]['DL_HARQ_TB_1']=temp_line.split(":")[1].split()[0].split('_')[1]
 				elif search("HARQ TB 2:",temp_line,I):
-					#Message['PDUs']['HARQ'+str(count)]['DL_HARQ_TB_2']=temp_line.split(":")[1].split()[0]
-					pass
+					Message['PDUs']['HARQ'+str(count)]['DL_HARQ_TB_2']=temp_line.split(":")[1].split()[0].split('_')[1]
+					sfn,sf=get_sfn_sf(Message['SFN'],Message['SF'])
+					DCI_FORMAT=get_data_from_DL_Q(sfn,sf,rnti,DL_Q)
+					if DCI_FORMAT != None:
+						if search("1|1A",DCI_FORMAT,I):
+							Message['PDUs']['HARQ'+str(count)]['DL_HARQ_TB_2']=""
 				elif search("^\s*$",temp_line,I):
 					break
 				else:
@@ -372,7 +397,7 @@ def HARQ_IND(FH,Frame,worksheet,row,format1,UL_Q):
 		Temp_Message['UL_PHY_CH']=get_data_from_UL_Q(Message['SFN'],Message['SF'],"HARQ",Temp_Message['RNTI'],None,1,None,UL_Q)
 		writeToExcel(worksheet,row,format1,Temp_Message)
 		row=row+1
-	del(Message,Temp_Message,N_HARQ,count,Frame)
+	#del(Message,Temp_Message,N_HARQ,count,Frame)
 	return row
 ###########################################################################
 #	Function Name	:	CRC_IND
@@ -471,6 +496,7 @@ def RX_ULSCH_IND(FH,Frame_No,worksheet,row,format1,CRC_Message):
 					count+=1;N_PDU-=1;LTE_RRC=0;
 					Message['PDUs']['PDU'+str(count)]={}
 					Message['PDUs']['PDU'+str(count)]['NAS_Message']=""
+					Message['PDUs']['PDU'+str(count)]['UL_PHY_CH']="PUSCH"
 				elif search("^\s*\[RNTI:\s+\d+\]",temp_line,I):
 					Message['PDUs']['PDU'+str(count)]['RNTI']=int(temp_line.split(":")[1].split("]")[0].strip())
 					CRC_Status=get_CRC(CRC_Message,Message['PDUs']['PDU'+str(count)]['RNTI'])
@@ -498,7 +524,6 @@ def RX_ULSCH_IND(FH,Frame_No,worksheet,row,format1,CRC_Message):
 					LTE_RRC=1
 				elif search("^\s*c1:\s*\w+\s*\(\d+\)",temp_line,I) and LTE_RRC==1:
 					#print "ULSCH:"+temp_line,Frame_No
-					Message['PDUs']['PDU'+str(count)]['UL_PHY_CH']="PUSCH"
 					Message['PDUs']['PDU'+str(count)]['RRC_Message']=temp_line.split(":")[1].strip().split()[0]
 					RRC_Comment+=temp_line
 				elif search("^\s*nas\s+eps\s+\w+\s+management\s+message.*:\s+.*\(.*\)\s*",temp_line,I)and LTE_RRC==1:
@@ -524,7 +549,7 @@ def RX_ULSCH_IND(FH,Frame_No,worksheet,row,format1,CRC_Message):
 				worksheet.write_comment(row,Message_Header.index('RRC_Message'),RRC_Comment,{'x_scale': 4})
 			RRC_Comment=""
 			row=row+1
-	del(Message,Temp_Message,N_PDU,Frame_No,count,no,LTE_RRC,CRC_Message)
+	#del(Message,Temp_Message,N_PDU,Frame_No,count,no,LTE_RRC,CRC_Message)
 	return row
 ###########################################################################
 #	Function Name	:	RACH_IND
@@ -584,7 +609,7 @@ def RACH_IND(FH,Frame,worksheet,row,format1):
 			Temp_Message[key]=value
 		writeToExcel(worksheet,row,format1,Temp_Message)
 		row=row+1
-	del(Message,Temp_Message,N_PRE,no,count,Frame)
+	#del(Message,Temp_Message,N_PRE,no,count,Frame)
 	return row
 ###########################################################################
 #	Function Name	:	SRS_IND
@@ -648,7 +673,7 @@ def SRS_IND(FH,Frame,worksheet,row,format1):
 			Temp_Message[key]=value
 		writeToExcel(worksheet,row,format1,Temp_Message)
 		row=row+1
-	del(Message,Temp_Message,N_PDU,no,count,Frame)
+	#del(Message,Temp_Message,N_PDU,no,count,Frame)
 	return row
 ###########################################################################
 #	Function Name	:	RX_SR_IND
@@ -707,7 +732,7 @@ def RX_SR_IND(FH,Frame,worksheet,row,format1,UL_Q):
 			Temp_Message[key]=value
 		writeToExcel(worksheet,row,format1,Temp_Message)
 		row=row+1
-	del(Message,Temp_Message,N_SR,no,count,Frame)
+	#del(Message,Temp_Message,N_SR,no,count,Frame)
 	return row
 ###########################################################################
 #	Function Name	:	RX_CQI_IND
@@ -752,7 +777,7 @@ def RX_CQI_IND(FH,Frame,worksheet,row,format1,UL_Q):
 				elif search("UL CQI:",temp_line,I):
 					value=int(temp_line.split(":")[1].split('(')[1].split(')')[0])
 					db=-64+(value*0.5)
-					Message['PDUs']['CQI'+str(count)]['CQI_PMI_INFO']="UL CQI:"+str(db)+"db("+str(value)+");TA:"+Message['PDUs']['CQI'+str(count)]['TA']
+					Message['PDUs']['CQI'+str(count)]['CQI_INFO']="UL CQI:"+str(db)+"db("+str(value)+");TA:"+Message['PDUs']['CQI'+str(count)]['TA']
 				elif search("RI:",temp_line,I):
 					Message['PDUs']['CQI'+str(count)]['RI']=temp_line.split(":")[1].split('(')[1].split(')')[0]
 				elif search("^\s*$",temp_line):
@@ -775,7 +800,7 @@ def RX_CQI_IND(FH,Frame,worksheet,row,format1,UL_Q):
 		Temp_Message['UL_PHY_CH']=get_data_from_UL_Q(Message['SFN'],Message['SF'],"CQI",Temp_Message['RNTI'],None,1,None,UL_Q)
 		writeToExcel(worksheet,row,format1,Temp_Message)
 		row=row+1
-	del(Message,Temp_Message,Frame,N_CQI,count)
+	#del(Message,Temp_Message,Frame,N_CQI,count)
 	return row
 ###########################################################################
 #	Function Name	:	writeToExcel
@@ -821,7 +846,7 @@ def createHeaderToExcel(worksheet,format):
 	'RAR_CONTENT':15,
 	'PHICH_INFO':15,
 	'RI':8,
-	'CQI_PMI_INFO':15,
+	'CQI_INFO':15,
 	'DL_HARQ_TB_1':15,
 	'DL_HARQ_TB_2':15,
 	'SRS':10,
@@ -834,7 +859,7 @@ def createHeaderToExcel(worksheet,format):
 		'PHY_CHANNEL':['DL_PHY_CH','UL_PHY_CH'],
 		'DL_DCI':['DL_DCI','DL_PDCCH_INFO'],
 		'UL_DCI':['UL_DCI','UL_PDCCH_INFO'],
-		'UCI_INFO':['RI','CQI_PMI_INFO'],
+		'UCI_INFO':['RI','CQI_INFO'],
 		'DL HARQ FEEDBACK':['DL_HARQ_TB_1','DL_HARQ_TB_2']
 	}
 	Merge_Data={
@@ -842,7 +867,7 @@ def createHeaderToExcel(worksheet,format):
 		'PHY_CHANNEL':['DL_PHY_CH','UL_PHY_CH'],
 		'DL_DCI':['FORMAT','DCI_INFO'],
 		'UL_DCI':['FORMAT','DCI_INFO'],
-		'UCI_INFO':['RI','CQI_PMI_INFO'],
+		'UCI_INFO':['RI','CQI_INFO'],
 		'DL HARQ FEEDBACK':['DL_HARQ_TB_1','DL_HARQ_TB_2']
 	}
 	for i in Message_Header:
@@ -915,6 +940,21 @@ def get_data_from_UL_Q(sfn,sf,pdu_type,get_rnti,send_rnti,send_channel,rb_start,
 					return_container=value['RNTI']
 					break
 		return return_container
+def get_data_from_DL_Q(sfn,sf,rnti,DL_Q):
+	pdu_list=None;return_container=None
+	for one_frame in DL_Q:
+		if one_frame['SFN']==sfn and one_frame['SF']==sf:
+			if 'PDUs' in one_frame:
+				pdu_list=one_frame['PDUs']
+			break
+	if pdu_list !=None:
+		for key,value in pdu_list.items():
+			if search('DCI',key,I):
+				if value['RNTI']==rnti:
+					return_container=value['DCI_FORMAT']
+					break
+	
+	return(return_container)
 ###########################################################################
 #	Function Name	:	get_sfn_sf
 #	Author		:	Chandan Kumar(chandan.kumar@votarytech.com)
@@ -997,7 +1037,7 @@ def TX_REQ(FH,Frame_No,worksheet,row,format1,SIB_Comment,MIB_Comment,SYS_BW):
 					LTE_RRC=1
 				elif search("^\s*BCCH-BCH-Message\s*$",temp_line,I) and LTE_RRC==1:
 					Message['PDUs']['PDU'+str(count)]['DL_PHY_CH']="PBCH"; # MIB 
-					Message['PDUs']['PDU'+str(count)]['RRC_Message']="MasterInformationBlock"
+					Message['PDUs']['PDU'+str(count)]['RRC_Message']="MIB"
 					RRC_Comment+=temp_line;
 					del Message['PDUs']['PDU'+str(count)]['RNTI_TYPE']
 				elif search("dl-Bandwidth:",temp_line,I) and LTE_RRC==1:
@@ -1069,12 +1109,12 @@ def TX_REQ(FH,Frame_No,worksheet,row,format1,SIB_Comment,MIB_Comment,SYS_BW):
 			if search("RAR",Temp_Message['RRC_Message'],I):
 				Temp_Message['RRC_Message']="";put_comment=0
 			writeToExcel(worksheet,row,format1,Temp_Message)
-			if search("SystemInformationBlockType1",Temp_Message['RRC_Message'],I):
+			if search("SystemInformationBlockType1|SIB",Temp_Message['RRC_Message'],I):
 				if SIB_Comment==1:
 					RRC_Comment="";put_comment=0
 				else:
 					SIB_Comment=1
-			elif search("MasterInformationBlock",Temp_Message['RRC_Message'],I):
+			elif search("MIB",Temp_Message['RRC_Message'],I):
 				if MIB_Comment==1:
 					RRC_Comment="";put_comment=0
 				else:
@@ -1083,7 +1123,7 @@ def TX_REQ(FH,Frame_No,worksheet,row,format1,SIB_Comment,MIB_Comment,SYS_BW):
 				worksheet.write_comment(row,Message_Header.index('RRC_Message'),RRC_Comment,{'x_scale': 4})
 			RRC_Comment=""
 			row=row+1
-	del(Message,Temp_Message,N_PDU,Frame_No,count,no,RAR,SIB,LTE_RRC,Sibs)
+	#del(Message,Temp_Message,N_PDU,Frame_No,count,no,RAR,SIB,LTE_RRC,Sibs)
 	return row,SIB_Comment,MIB_Comment;
 ###########################################################################
 #	FUnction Name	:	getP_Value
